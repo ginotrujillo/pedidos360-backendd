@@ -1,0 +1,134 @@
+# Arquitectura Kafka de Pedidos360: 1 Zookeeper + 2 brokers + creación automática de tópicos.
+# Uso:   docker compose -f docker-compose.kafka.yml up -d
+# Baja:  docker compose -f docker-compose.kafka.yml down        (agregar -v para borrar los datos)
+#
+# Puertos hacia tu PC (para Spring Boot corriendo fuera de Docker):
+#   broker 1 -> localhost:9092      broker 2 -> localhost:9093
+# Entre contenedores (Kafka-ui, kafka-init) se usan kafka1:29092 y kafka2:29092.
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - kafka-net
+
+  kafka1:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka1
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Dos listeners: INTERNAL (entre contenedores) y EXTERNAL (desde tu PC)
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka1:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # Con 2 brokers: replicación 2 y mínimo 1 réplica sincronizada (tolera la caída de un broker)
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 2
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # Los tópicos se crean de forma explícita (kafka-init o microservicio administrador)
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      - kafka-net
+
+  kafka2:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka2
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka2:29092,EXTERNAL://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 2
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    networks:
+      - kafka-net
+
+  # Contenedor de un solo uso: crea los tópicos con su configuración y termina.
+  # Es el "script de infraestructura" replicable: si se borran los datos, basta con volver a levantar.
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka-init
+    restart: "no"
+    depends_on:
+      kafka1:
+        condition: service_healthy
+      kafka2:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        echo "Creando tópicos de Pedidos360..."
+
+        # Eventos de cambio de estado de pedidos: se conservan 7 días, 3 particiones
+        kafka-topics --bootstrap-server kafka1:29092 --create --if-not-exists \
+          --topic pedidos.eventos \
+          --partitions 3 --replication-factor 2 \
+          --config cleanup.policy=delete \
+          --config retention.ms=604800000
+
+        # Cambios de stock por producto: compactado, queda el último valor por clave (id del producto)
+        kafka-topics --bootstrap-server kafka1:29092 --create --if-not-exists \
+          --topic catalogo.stock \
+          --partitions 2 --replication-factor 2 \
+          --config cleanup.policy=compact \
+          --config min.cleanable.dirty.ratio=0.1 \
+          --config segment.ms=60000
+
+        # Dead Letter Topic: mensajes que fallaron tras los reintentos o que son inválidos. Se conservan 30 días
+        kafka-topics --bootstrap-server kafka1:29092 --create --if-not-exists \
+          --topic pedidos.eventos.DLT \
+          --partitions 3 --replication-factor 2 \
+          --config cleanup.policy=delete \
+          --config retention.ms=2592000000
+
+        echo "Tópicos existentes:"
+        kafka-topics --bootstrap-server kafka1:29092 --list
+    networks:
+      - kafka-net
+
+networks:
+  kafka-net:
+    name: kafka-net
+    driver: bridge

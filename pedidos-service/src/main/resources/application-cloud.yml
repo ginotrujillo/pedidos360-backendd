@@ -1,0 +1,24 @@
+# Perfil cloud: backend en EC2 conectado al CLÚSTER RabbitMQ de 2 nodos (deploy/cloud) y al clúster Kafka.
+# Base de datos H2 en memoria para simplificar la demostración de mensajería.
+# Las credenciales llegan por variables de entorno (nunca escritas aquí).
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://login.microsoftonline.com/${ENTRA_TENANT_ID:d39637a6-cb63-4031-b19a-d1c1a17eb202}/v2.0
+  datasource:
+    url: jdbc:h2:mem:pedidos360
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  rabbitmq:
+    addresses: ${RABBITMQ_ADDRESSES:localhost:5672,localhost:5673}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+    connection-timeout: 10s

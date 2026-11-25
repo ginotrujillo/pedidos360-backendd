@@ -1,0 +1,27 @@
+# Perfil producción: PostgreSQL en RDS + clúster RabbitMQ + clúster Kafka. Todo lo sensible llega por variables de entorno.
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://login.microsoftonline.com/${ENTRA_TENANT_ID:d39637a6-cb63-4031-b19a-d1c1a17eb202}/v2.0
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:5432/${DB_NAME:pedidos360}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  rabbitmq:
+    addresses: ${RABBITMQ_ADDRESSES}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+    connection-timeout: 10s
+
+logging:
+  level:
+    root: INFO
+    org.springframework.amqp: WARN
+    com.rabbitmq: WARN
+    org.apache.kafka: WARN

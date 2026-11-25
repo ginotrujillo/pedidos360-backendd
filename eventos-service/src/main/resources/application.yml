@@ -1,0 +1,84 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: eventos-service
+  profiles:
+    active: dev
+  rabbitmq:
+    listener:
+      simple:
+        # ACK manual: cada consumer llama a basicAck / basicNack explícitamente
+        acknowledge-mode: manual
+        # Un mensaje a la vez por consumer (permite ver Ready vs Unacked en la Management UI)
+        prefetch: 1
+        # Un mensaje rechazado NO se reencola: va a la DLQ de su cola
+        default-requeue-rejected: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092,localhost:9093}
+    consumer:
+      # ErrorHandlingDeserializer envuelve al deserializador real: si un mensaje viene roto no se cae
+      # el consumer, el error pasa al manejador de errores (reintentos / DLT)
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      # Un grupo nuevo empieza desde el primer mensaje disponible
+      auto-offset-reset: earliest
+      # El commit del offset lo hace el contenedor tras procesar cada mensaje (ack-mode: record)
+      enable-auto-commit: false
+      properties:
+        spring.deserializer.key.delegate.class: org.apache.kafka.common.serialization.StringDeserializer
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+        spring.json.trusted.packages: com.pedidos360.eventos.kafka.dto
+        # Traduce el nombre lógico del header a la clase DTO de ESTE servicio
+        spring.json.type.mapping: pedidoEvento:com.pedidos360.eventos.kafka.dto.PedidoEventoDto,stockEvento:com.pedidos360.eventos.kafka.dto.StockEventoDto
+    listener:
+      ack-mode: record
+      # 3 hilos por listener = hasta 3 consumers del grupo, uno por partición de pedidos.eventos
+      concurrency: 3
+      missing-topics-fatal: false
+
+app:
+  rabbitmq:
+    exchange:
+      direct: pedidos.direct
+      topic: pedidos.topic
+    queue:
+      stock: pedidos.stock.queue
+      notificaciones: pedidos.notificaciones.queue
+      auditoria: pedidos.auditoria.queue
+    dlq:
+      stock: pedidos.stock.dlq
+      notificaciones: pedidos.notificaciones.dlq
+      auditoria: pedidos.auditoria.dlq
+    routing:
+      aceptado: pedido.aceptado.evento
+      wildcardEstado: pedido.*.evento
+      wildcardTodo: pedido.#
+    demo:
+      # Demora artificial (ms) en el consumer de notificaciones, solo para mostrar "Unacked". 0 = desactivada
+      demora-ms: 0
+  kafka:
+    topics:
+      pedidos-eventos: pedidos.eventos
+      catalogo-stock: catalogo.stock
+      pedidos-dlt: pedidos.eventos.DLT
+    # Un consumer group por responsabilidad: cada grupo recibe su propia copia de los eventos
+    groups:
+      notificaciones: notificaciones-group
+      auditoria: auditoria-group
+      stock: stock-group
+      dlt: dlt-monitor-group
+    retry:
+      intervalo-ms: 1000
+      max-reintentos: 3
+    stock-minimo: 5
+    demo:
+      # true = el consumer de notificaciones falla siempre (para mostrar reintentos y envío al DLT)
+      fallar-notificaciones: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

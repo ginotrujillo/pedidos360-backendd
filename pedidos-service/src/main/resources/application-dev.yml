@@ -1,0 +1,23 @@
+# Perfil de desarrollo local: H2 en memoria + RabbitMQ (docker/rabbitmq) + Kafka (docker/kafka)
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://login.microsoftonline.com/${ENTRA_TENANT_ID:d39637a6-cb63-4031-b19a-d1c1a17eb202}/v2.0
+  datasource:
+    url: jdbc:h2:mem:pedidos360
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  rabbitmq:
+    host: localhost
+    port: 5672
+    # Credenciales SOLO del contenedor local (docker/rabbitmq/docker-compose.local.yml). En cloud se usan variables de entorno.
+    username: ${RABBITMQ_USER:admin}
+    password: ${RABBITMQ_PASSWORD:admin123}

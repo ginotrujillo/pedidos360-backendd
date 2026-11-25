@@ -1,0 +1,8 @@
+# Perfil de desarrollo local: RabbitMQ (docker/rabbitmq) + Kafka (docker/kafka)
+spring:
+  rabbitmq:
+    host: localhost
+    port: 5672
+    # Credenciales SOLO del contenedor local. En cloud se usan variables de entorno.
+    username: ${RABBITMQ_USER:admin}
+    password: ${RABBITMQ_PASSWORD:admin123}

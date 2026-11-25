@@ -1,0 +1,18 @@
+# Perfil cloud: clúster RabbitMQ de 2 nodos + clúster Kafka. Credenciales por variables de entorno.
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://login.microsoftonline.com/${ENTRA_TENANT_ID:d39637a6-cb63-4031-b19a-d1c1a17eb202}/v2.0
+  rabbitmq:
+    addresses: ${RABBITMQ_ADDRESSES:localhost:5672,localhost:5673}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+    connection-timeout: 10s
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    org.springframework.amqp: WARN
+    com.rabbitmq: WARN

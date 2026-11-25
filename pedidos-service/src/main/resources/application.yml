@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: pedidos-service
+  profiles:
+    active: dev
+  kafka:
+    # Brokers del clúster (2 nodos). Si uno cae, el cliente usa el otro.
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092,localhost:9093}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      # all: el mensaje se confirma cuando lo tienen todas las réplicas sincronizadas
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+        # Si Kafka está caído no se cuelga la petición REST: falla rápido y se registra el error
+        max.block.ms: 3000
+        request.timeout.ms: 3000
+        delivery.timeout.ms: 10000
+        # Nombre lógico del tipo en el header del mensaje (el consumidor lo traduce a su propia clase)
+        spring.json.type.mapping: pedidoEvento:com.pedidos360.pedidos.messaging.dto.PedidoEventoDto,stockEvento:com.pedidos360.pedidos.messaging.dto.StockEventoDto
+
+app:
+  security:
+    audience: ${ENTRA_API_CLIENT_ID:da4ade51-40ca-4222-8838-306a092a85c1}
+  rabbitmq:
+    exchange:
+      direct: pedidos.direct
+      topic: pedidos.topic
+  kafka:
+    # Con un solo broker (pruebas) usar KAFKA_REPLICAS=1
+    replicas: ${KAFKA_REPLICAS:2}
+    topics:
+      pedidos-eventos: pedidos.eventos
+      catalogo-stock: catalogo.stock
+      pedidos-dlt: pedidos.eventos.DLT
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

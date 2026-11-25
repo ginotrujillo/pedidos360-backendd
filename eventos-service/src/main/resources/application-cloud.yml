@@ -1,0 +1,14 @@
+# Perfil cloud: conectado al clúster RabbitMQ de 2 nodos y al clúster Kafka.
+# Las credenciales llegan por variables de entorno (nunca escritas aquí).
+spring:
+  rabbitmq:
+    addresses: ${RABBITMQ_ADDRESSES:localhost:5672,localhost:5673}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
+    connection-timeout: 10s
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    org.springframework.amqp: WARN
+    com.rabbitmq: WARN
